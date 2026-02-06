@@ -491,6 +491,11 @@ fn run_managed_operation(
         let mut file = unsafe { std::fs::File::from_raw_fd(master_fd_reader) };
         let mut buf = [0u8; 4096];
         let mut current_percent: i32 = 0;
+        // Throttle UI output updates to avoid flooding the renderer
+        let mut pending_output = String::new();
+        let mut last_output_flush = std::time::Instant::now();
+        const OUTPUT_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(150);
+        const MAX_OUTPUT_LINES: usize = 80;
 
         loop {
             match file.read(&mut buf) {
@@ -516,8 +521,33 @@ fn run_managed_operation(
                                               // Already escalated — forward to terminal
                                               let _ = tx_reader.send(UiMessage::TerminalOutput(cleaned));
                                           } else {
-                                              // Send live output to the progress popup
-                                              let _ = tx_reader.send(UiMessage::ProgressOutput(cleaned.clone()));
+                                              // Buffer output and flush at throttled intervals
+                                              // Filter out noisy progress bar lines (contain lots of # or %)
+                                              for line in cleaned.lines() {
+                                                  let trimmed = line.trim();
+                                                  if trimmed.is_empty() { continue; }
+                                                  // Skip raw progress bar fragments (e.g. "####..." or repeated dots)
+                                                  if trimmed.len() > 5 && (trimmed.chars().filter(|&c| c == '#').count() > trimmed.len() / 2
+                                                      || trimmed.chars().filter(|&c| c == '.').count() > trimmed.len() / 2) {
+                                                      continue;
+                                                      }
+                                                      pending_output.push_str(trimmed);
+                                                  pending_output.push('\n');
+                                              }
+
+                                              // Flush pending output to UI at throttled rate
+                                              let now = std::time::Instant::now();
+                                              if !pending_output.is_empty() && now.duration_since(last_output_flush) >= OUTPUT_FLUSH_INTERVAL {
+                                                  // Trim to last N lines before sending
+                                                  let lines: Vec<&str> = pending_output.lines().collect();
+                                                  if lines.len() > MAX_OUTPUT_LINES {
+                                                      pending_output = lines[lines.len() - MAX_OUTPUT_LINES..].join("\n");
+                                                      pending_output.push('\n');
+                                                  }
+                                                  let _ = tx_reader.send(UiMessage::ProgressOutput(pending_output.clone()));
+                                                  last_output_flush = now;
+                                                  // Don't clear — keep as rolling buffer so next flush has context
+                                              }
 
                                               // Check for conflicts/errors
                                               let lower = cleaned.to_lowercase();
@@ -598,6 +628,15 @@ fn run_managed_operation(
                                       }
                                       Err(_) => break,
             }
+        }
+        // Final flush of any remaining output
+        if !pending_output.is_empty() {
+            let lines: Vec<&str> = pending_output.lines().collect();
+            if lines.len() > MAX_OUTPUT_LINES {
+                pending_output = lines[lines.len() - MAX_OUTPUT_LINES..].join("\n");
+                pending_output.push('\n');
+            }
+            let _ = tx_reader.send(UiMessage::ProgressOutput(pending_output));
         }
         std::mem::forget(file);
     });
@@ -933,17 +972,8 @@ fn main() {
                         window.set_show_terminal(false);
                     }
                     UiMessage::ProgressOutput(text) => {
-                        // Append to output, keeping last ~200 lines to prevent UI slowdown
-                        let mut current = window.get_progress_popup_output().to_string();
-                        current.push_str(&text);
-                        // Trim to last 200 lines
-                        let lines: Vec<&str> = current.lines().collect();
-                        if lines.len() > 200 {
-                            let trimmed: String = lines[lines.len() - 200..].join("\n");
-                            window.set_progress_popup_output(SharedString::from(&trimmed));
-                        } else {
-                            window.set_progress_popup_output(SharedString::from(&current));
-                        }
+                        // Replace output directly — the reader thread sends a pre-trimmed rolling buffer
+                        window.set_progress_popup_output(SharedString::from(&text));
                     }
                     UiMessage::ProgressPrompt(prompt) => {
                         window.set_progress_popup_prompt(SharedString::from(&prompt));
