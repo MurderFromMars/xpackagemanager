@@ -308,7 +308,7 @@ export component MainWindow inherits Window {
     min-height: 550px;
     background: Palette.background;
 
-    in-out property <int> view: 0;
+    in-out property <int> view: 7;
     in-out property <[PackageData]> installed-packages: [];
     in-out property <[PackageData]> update-packages: [];
     in-out property <[PackageData]> search-packages: [];
@@ -461,6 +461,13 @@ export component MainWindow inherits Window {
 
                 // Nav
                 NavButton {
+                    icon: "📂";
+                    label: "Browse";
+                    active: view == 7;
+                    clicked => { view = 7; selected-index = -1; show-category-grid = true; }
+                }
+
+                NavButton {
                     icon: "⬇";
                     label: "Installed";
                     active: view == 0;
@@ -469,16 +476,9 @@ export component MainWindow inherits Window {
 
                 NavButton {
                     icon: "🔍";
-                    label: "Search";
+                    label: "Search Results";
                     active: view == 2;
                     clicked => { view = 2; selected-index = -1; }
-                }
-
-                NavButton {
-                    icon: "📂";
-                    label: "Browse";
-                    active: view == 7;
-                    clicked => { view = 7; selected-index = -1; show-category-grid = true; }
                 }
 
                 Rectangle { height: 8px; }
