@@ -49,25 +49,52 @@ enum UiMessage {
 /// Patterns that indicate pacman is asking for confirmation (auto-answer "y")
 const PACMAN_CONFIRM_PATTERNS: &[&str] = &[
     "Proceed with installation?",
-    "Proceed with download?",
-    ":: Proceed with installation?",
-    ":: Proceed with download?",
-    "Do you want to remove these packages?",
-    ":: Do you want to remove these packages?",
-    "[Y/n]",
-    "[y/N]",
+"Proceed with download?",
+":: Proceed with installation?",
+":: Proceed with download?",
+"Do you want to remove these packages?",
+":: Do you want to remove these packages?",
+"[Y/n]",
+"[y/N]",
 ];
 
 /// Patterns that indicate a conflict or error requiring user intervention
 const CONFLICT_PATTERNS: &[&str] = &[
     "conflicting files",
-    "are in conflict",
-    ":: Replace",
-    "error:",
-    "exists in filesystem",
-    "breaks dependency",
-    "could not satisfy dependencies",
+"are in conflict",
+":: Replace",
+"error:",
+"exists in filesystem",
+"breaks dependency",
+"could not satisfy dependencies",
 ];
+
+/// Check if the system is running XeroLinux
+fn is_xerolinux_distro() -> bool {
+    // Check ID and NAME fields in /etc/os-release
+    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+        for line in content.lines() {
+            let line_lower = line.to_lowercase();
+            if (line_lower.starts_with("id=") || line_lower.starts_with("name=") || line_lower.starts_with("pretty_name="))
+                && line_lower.contains("xerolinux")
+                {
+                    return true;
+                }
+        }
+    }
+    // Fallback: check /etc/lsb-release
+    if let Ok(content) = std::fs::read_to_string("/etc/lsb-release") {
+        for line in content.lines() {
+            let line_lower = line.to_lowercase();
+            if (line_lower.starts_with("distrib_id=") || line_lower.starts_with("distrib_description="))
+                && line_lower.contains("xerolinux")
+                {
+                    return true;
+                }
+        }
+    }
+    false
+}
 
 /// Check if a file path is a valid Arch Linux package
 fn is_arch_package(path: &str) -> bool {
@@ -85,10 +112,10 @@ fn get_local_package_info(path: &str) -> Option<PackageData> {
     let filename = path_obj.file_name()?.to_str()?;
 
     let base = filename
-        .strip_suffix(".pkg.tar.zst")
-        .or_else(|| filename.strip_suffix(".pkg.tar.xz"))
-        .or_else(|| filename.strip_suffix(".pkg.tar.gz"))
-        .or_else(|| filename.strip_suffix(".pkg.tar"))?;
+    .strip_suffix(".pkg.tar.zst")
+    .or_else(|| filename.strip_suffix(".pkg.tar.xz"))
+    .or_else(|| filename.strip_suffix(".pkg.tar.gz"))
+    .or_else(|| filename.strip_suffix(".pkg.tar"))?;
 
     let parts: Vec<&str> = base.rsplitn(4, '-').collect();
     let (name, version) = if parts.len() >= 3 {
@@ -100,27 +127,27 @@ fn get_local_package_info(path: &str) -> Option<PackageData> {
     };
 
     let size = path_obj
-        .metadata()
-        .ok()
-        .map(|m| format_size(m.len()))
-        .unwrap_or_else(|| "Unknown".to_string());
+    .metadata()
+    .ok()
+    .map(|m| format_size(m.len()))
+    .unwrap_or_else(|| "Unknown".to_string());
 
     Some(PackageData {
         name: SharedString::from(&name),
-        display_name: SharedString::from(&name),
-        version: SharedString::from(&version),
-        description: SharedString::from(format!("Local package: {}", filename)),
-        repository: SharedString::from("local"),
-        backend: 2,
-        installed: false,
-        has_update: false,
-        installed_size: SharedString::from(&size),
-        licenses: SharedString::from(""),
-        url: SharedString::from(""),
-        dependencies: SharedString::from(""),
-        required_by: SharedString::from(""),
-        icon_name: SharedString::from("package"),
-        selected: false,
+         display_name: SharedString::from(&name),
+         version: SharedString::from(&version),
+         description: SharedString::from(format!("Local package: {}", filename)),
+         repository: SharedString::from("local"),
+         backend: 2,
+         installed: false,
+         has_update: false,
+         installed_size: SharedString::from(&size),
+         licenses: SharedString::from(""),
+         url: SharedString::from(""),
+         dependencies: SharedString::from(""),
+         required_by: SharedString::from(""),
+         icon_name: SharedString::from("package"),
+         selected: false,
     })
 }
 
@@ -242,17 +269,17 @@ fn spawn_in_pty(cmd: &str, args: &[&str]) -> Result<(i32, u32), String> {
         let stdout_fd = libc::dup(slave);
         let stderr_fd = libc::dup(slave);
         std::process::Command::new(cmd)
-            .args(args)
-            .env("TERM", "xterm-256color")
-            .stdin(std::process::Stdio::from_raw_fd(stdin_fd))
-            .stdout(std::process::Stdio::from_raw_fd(stdout_fd))
-            .stderr(std::process::Stdio::from_raw_fd(stderr_fd))
-            .pre_exec(move || {
-                libc::setsid();
-                libc::ioctl(slave, libc::TIOCSCTTY, 0);
-                Ok(())
-            })
-            .spawn()
+        .args(args)
+        .env("TERM", "xterm-256color")
+        .stdin(std::process::Stdio::from_raw_fd(stdin_fd))
+        .stdout(std::process::Stdio::from_raw_fd(stdout_fd))
+        .stderr(std::process::Stdio::from_raw_fd(stderr_fd))
+        .pre_exec(move || {
+            libc::setsid();
+            libc::ioctl(slave, libc::TIOCSCTTY, 0);
+            Ok(())
+        })
+        .spawn()
     };
 
     // Close original slave in parent (dup'd copies are owned by Stdio)
@@ -304,14 +331,14 @@ fn run_in_terminal(
         loop {
             match file.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => {
-                    let text = String::from_utf8_lossy(&buf[..n]);
-                    let cleaned = strip_ansi(&text);
-                    if !cleaned.is_empty() {
-                        let _ = tx_reader.send(UiMessage::TerminalOutput(cleaned));
-                    }
-                }
-                Err(_) => break,
+                                      Ok(n) => {
+                                          let text = String::from_utf8_lossy(&buf[..n]);
+                                          let cleaned = strip_ansi(&text);
+                                          if !cleaned.is_empty() {
+                                              let _ = tx_reader.send(UiMessage::TerminalOutput(cleaned));
+                                          }
+                                      }
+                                      Err(_) => break,
             }
         }
         // Prevent the File from closing master_fd - we'll handle it
@@ -457,75 +484,75 @@ fn run_managed_operation(
         loop {
             match file.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => {
-                    let text = String::from_utf8_lossy(&buf[..n]);
-                    let cleaned = strip_ansi(&text);
-                    if cleaned.is_empty() {
-                        continue;
-                    }
+                                      Ok(n) => {
+                                          let text = String::from_utf8_lossy(&buf[..n]);
+                                          let cleaned = strip_ansi(&text);
+                                          if cleaned.is_empty() {
+                                              continue;
+                                          }
 
-                    // Accumulate output
-                    output_buffer_r.lock().unwrap().push_str(&cleaned);
+                                          // Accumulate output
+                                          output_buffer_r.lock().unwrap().push_str(&cleaned);
 
-                    let is_escalated = *escalated_r.lock().unwrap();
+                                          let is_escalated = *escalated_r.lock().unwrap();
 
-                    if is_escalated {
-                        // Already escalated — forward to terminal
-                        let _ = tx_reader.send(UiMessage::TerminalOutput(cleaned));
-                    } else {
-                        // Check for conflicts/errors
-                        let lower = cleaned.to_lowercase();
-                        let has_conflict = CONFLICT_PATTERNS.iter().any(|p| lower.contains(&p.to_lowercase()));
+                                          if is_escalated {
+                                              // Already escalated — forward to terminal
+                                              let _ = tx_reader.send(UiMessage::TerminalOutput(cleaned));
+                                          } else {
+                                              // Check for conflicts/errors
+                                              let lower = cleaned.to_lowercase();
+                                              let has_conflict = CONFLICT_PATTERNS.iter().any(|p| lower.contains(&p.to_lowercase()));
 
-                        if has_conflict {
-                            // Escalate to terminal
-                            *escalated_r.lock().unwrap() = true;
-                            let accumulated = output_buffer_r.lock().unwrap().clone();
-                            let _ = tx_reader.send(UiMessage::ShowTerminalFallback(accumulated));
-                            continue;
-                        }
+                                              if has_conflict {
+                                                  // Escalate to terminal
+                                                  *escalated_r.lock().unwrap() = true;
+                                                  let accumulated = output_buffer_r.lock().unwrap().clone();
+                                                  let _ = tx_reader.send(UiMessage::ShowTerminalFallback(accumulated));
+                                                  continue;
+                                              }
 
-                        // Auto-confirm prompts
-                        let has_prompt = PACMAN_CONFIRM_PATTERNS.iter().any(|p| cleaned.contains(p));
-                        if has_prompt {
-                            let _ = in_tx_r.send("y".to_string());
-                        }
+                                              // Auto-confirm prompts
+                                              let has_prompt = PACMAN_CONFIRM_PATTERNS.iter().any(|p| cleaned.contains(p));
+                                              if has_prompt {
+                                                  let _ = in_tx_r.send("y".to_string());
+                                              }
 
-                        // Stage detection for progress
-                        for line in cleaned.lines() {
-                            let lower_line = line.to_lowercase();
-                            let new_percent = if lower_line.contains("resolving dependencies") {
-                                10
-                            } else if lower_line.contains("looking for conflicting") {
-                                15
-                            } else if lower_line.contains("downloading") {
-                                // Try to parse (X/Y) for proportional progress
-                                parse_progress_fraction(line, 25, 55, total_packages)
-                                    .unwrap_or(35)
-                            } else if lower_line.contains("checking keyring") || lower_line.contains("checking integrity") {
-                                55
-                            } else if lower_line.contains("checking package integrity") {
-                                58
-                            } else if lower_line.contains("loading package files") {
-                                60
-                            } else if lower_line.contains("installing") || lower_line.contains("upgrading") || lower_line.contains("removing") {
-                                parse_progress_fraction(line, 60, 88, total_packages)
-                                    .unwrap_or(75)
-                            } else if lower_line.contains("running post-transaction hooks") {
-                                90
-                            } else {
-                                current_percent
-                            };
+                                              // Stage detection for progress
+                                              for line in cleaned.lines() {
+                                                  let lower_line = line.to_lowercase();
+                                                  let new_percent = if lower_line.contains("resolving dependencies") {
+                                                      10
+                                                  } else if lower_line.contains("looking for conflicting") {
+                                                      15
+                                                  } else if lower_line.contains("downloading") {
+                                                      // Try to parse (X/Y) for proportional progress
+                                                      parse_progress_fraction(line, 25, 55, total_packages)
+                                                      .unwrap_or(35)
+                                                  } else if lower_line.contains("checking keyring") || lower_line.contains("checking integrity") {
+                                                      55
+                                                  } else if lower_line.contains("checking package integrity") {
+                                                      58
+                                                  } else if lower_line.contains("loading package files") {
+                                                      60
+                                                  } else if lower_line.contains("installing") || lower_line.contains("upgrading") || lower_line.contains("removing") {
+                                                      parse_progress_fraction(line, 60, 88, total_packages)
+                                                      .unwrap_or(75)
+                                                  } else if lower_line.contains("running post-transaction hooks") {
+                                                      90
+                                                  } else {
+                                                      current_percent
+                                                  };
 
-                            if new_percent > current_percent {
-                                current_percent = new_percent;
-                                let stage = line.trim().to_string();
-                                let _ = tx_reader.send(UiMessage::OperationProgress(current_percent, stage));
-                            }
-                        }
-                    }
-                }
-                Err(_) => break,
+                                                  if new_percent > current_percent {
+                                                      current_percent = new_percent;
+                                                      let stage = line.trim().to_string();
+                                                      let _ = tx_reader.send(UiMessage::OperationProgress(current_percent, stage));
+                                                  }
+                                              }
+                                          }
+                                      }
+                                      Err(_) => break,
             }
         }
         std::mem::forget(file);
@@ -585,7 +612,7 @@ fn parse_progress_fraction(line: &str, range_start: i32, range_end: i32, _total_
             if parts.len() == 2 {
                 if let (Ok(current), Ok(total)) = (
                     parts[0].trim().parse::<i32>(),
-                    parts[1].trim().parse::<i32>(),
+                                                   parts[1].trim().parse::<i32>(),
                 ) {
                     if total > 0 {
                         let fraction = current as f64 / total as f64;
@@ -639,7 +666,7 @@ fn update_to_ui(update: &xpm_core::package::UpdateInfo) -> PackageData {
     let version_str = format!(
         "{} → {}",
         update.current_version.to_string(),
-        update.new_version.to_string()
+                              update.new_version.to_string()
     );
 
     PackageData {
@@ -716,8 +743,8 @@ fn update_selection_in_models(window: &MainWindow, name: &str, backend: i32, sel
 fn main() {
     // Initialize logging.
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
+    .with_max_level(Level::INFO)
+    .finish();
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
     info!("Starting xPackageManager");
@@ -728,6 +755,16 @@ fn main() {
 
     if let Some(ref path) = local_package_path {
         info!("Opening local package: {}", path);
+    }
+
+    // Check if running on XeroLinux
+    if !is_xerolinux_distro() {
+        let warning = DistroWarning::new().expect("Failed to create warning window");
+        warning.on_dismiss(move || {
+            std::process::exit(0);
+        });
+        warning.run().expect("Failed to run warning window");
+        return; // Should not reach here, but just in case
     }
 
     // Create the main window
@@ -822,7 +859,7 @@ fn main() {
                             thread::spawn(move || {
                                 let rt = tokio::runtime::Runtime::new().expect("Runtime");
                                 rt.block_on(async {
-                                    load_packages_async(&tx).await;
+                                    load_packages_async(&tx, false).await;
                                     // Re-run search so Install/Remove buttons update
                                     if !search_query.is_empty() {
                                         search_packages_async(&tx, &search_query).await;
@@ -869,7 +906,7 @@ fn main() {
                             thread::spawn(move || {
                                 let rt = tokio::runtime::Runtime::new().expect("Runtime");
                                 rt.block_on(async {
-                                    load_packages_async(&tx).await;
+                                    load_packages_async(&tx, false).await;
                                     if !search_query.is_empty() {
                                         search_packages_async(&tx, &search_query).await;
                                     }
@@ -898,20 +935,20 @@ fn main() {
             // Flush terminal output at most every 150ms (or immediately when done)
             if !pending_terminal.is_empty()
                 && (flush_now || last_term_flush.elapsed() >= std::time::Duration::from_millis(150))
-            {
-                // Normalize any \r\n split across PTY read boundaries
-                let text = pending_terminal.replace("\r\n", "\n");
-                pending_terminal.clear();
-                let current = window.get_terminal_output().to_string();
-                let combined = apply_terminal_text(&current, &text);
-                let trimmed = if combined.len() > 16384 {
-                    combined[combined.len() - 16384..].to_string()
-                } else {
-                    combined
-                };
-                window.set_terminal_output(SharedString::from(&trimmed));
-                last_term_flush = std::time::Instant::now();
-            }
+                {
+                    // Normalize any \r\n split across PTY read boundaries
+                    let text = pending_terminal.replace("\r\n", "\n");
+                    pending_terminal.clear();
+                    let current = window.get_terminal_output().to_string();
+                    let combined = apply_terminal_text(&current, &text);
+                    let trimmed = if combined.len() > 16384 {
+                        combined[combined.len() - 16384..].to_string()
+                    } else {
+                        combined
+                    };
+                    window.set_terminal_output(SharedString::from(&trimmed));
+                    last_term_flush = std::time::Instant::now();
+                }
         }
     });
 
@@ -921,7 +958,7 @@ fn main() {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
         rt.block_on(async {
             let _ = tx_initial.send(UiMessage::SetLoading(true));
-            load_packages_async(&tx_initial).await;
+            load_packages_async(&tx_initial, false).await;
         });
     });
 
@@ -943,7 +980,7 @@ fn main() {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create runtime");
             rt.block_on(async {
                 let _ = tx.send(UiMessage::SetLoading(true));
-                load_packages_async(&tx).await;
+                load_packages_async(&tx, false).await;
             });
         });
     });
@@ -1284,8 +1321,8 @@ fn main() {
 
             // Step 1: Sync pacman databases via polkit
             let pacman_ok = match std::process::Command::new("pkexec")
-                .args(["pacman", "-Syy"])
-                .output()
+            .args(["pacman", "-Syy"])
+            .output()
             {
                 Ok(r) if r.status.success() => {
                     let _ = tx.send(UiMessage::SetProgress(25));
@@ -1297,14 +1334,14 @@ fn main() {
                     let stderr = String::from_utf8_lossy(&r.stderr);
                     if stderr.contains("cancelled") || stderr.contains("dismissed")
                         || r.status.code() == Some(126) || r.status.code() == Some(127)
-                    {
-                        let _ = tx.send(UiMessage::SetStatus("Authentication cancelled".to_string()));
-                        let _ = tx.send(UiMessage::SetProgress(0));
-                        let _ = tx.send(UiMessage::SetProgressText("".to_string()));
-                        let _ = tx.send(UiMessage::SetBusy(false));
-                        return;
-                    }
-                    let _ = tx.send(UiMessage::SetProgress(25));
+                        {
+                            let _ = tx.send(UiMessage::SetStatus("Authentication cancelled".to_string()));
+                            let _ = tx.send(UiMessage::SetProgress(0));
+                            let _ = tx.send(UiMessage::SetProgressText("".to_string()));
+                            let _ = tx.send(UiMessage::SetBusy(false));
+                            return;
+                        }
+                        let _ = tx.send(UiMessage::SetProgress(25));
                     let _ = tx.send(UiMessage::SetProgressText("Pacman sync had issues, continuing...".to_string()));
                     let _ = tx.send(UiMessage::SetStatus("Pacman sync had issues, continuing...".to_string()));
                     false
@@ -1322,11 +1359,11 @@ fn main() {
             let _ = tx.send(UiMessage::SetProgressText("Refreshing Flatpak metadata...".to_string()));
             let _ = tx.send(UiMessage::SetStatus("Refreshing Flatpak metadata...".to_string()));
             let _flatpak_ok = match std::process::Command::new("flatpak")
-                .args(["update", "--appstream", "-y"])
-                .output()
+            .args(["update", "--appstream", "-y"])
+            .output()
             {
                 Ok(r) => r.status.success(),
-                Err(_) => false,
+                      Err(_) => false,
             };
 
             // Step 3: Refresh firmware metadata (with timeout - fwupdmgr can hang)
@@ -1334,24 +1371,24 @@ fn main() {
             let _ = tx.send(UiMessage::SetProgressText("Checking firmware...".to_string()));
             let _ = tx.send(UiMessage::SetStatus("Checking firmware...".to_string()));
             let fw_child = std::process::Command::new("fwupdmgr")
-                .args(["refresh", "--force"])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
+            .args(["refresh", "--force"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
             if let Ok(mut child) = fw_child {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
                 loop {
                     match child.try_wait() {
                         Ok(Some(_)) => break,
-                        Ok(None) => {
-                            if std::time::Instant::now() >= deadline {
-                                let _ = child.kill();
-                                let _ = child.wait();
-                                break;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                        Err(_) => break,
+                      Ok(None) => {
+                          if std::time::Instant::now() >= deadline {
+                              let _ = child.kill();
+                              let _ = child.wait();
+                              break;
+                          }
+                          std::thread::sleep(std::time::Duration::from_millis(500));
+                      }
+                      Err(_) => break,
                     }
                 }
             }
@@ -1362,7 +1399,7 @@ fn main() {
             let rt = tokio::runtime::Runtime::new().expect("Runtime");
             rt.block_on(async {
                 let _ = tx.send(UiMessage::SetLoading(true));
-                load_packages_async(&tx).await;
+                load_packages_async(&tx, true).await;
             });
 
             let _ = tx.send(UiMessage::SetProgress(100));
@@ -1443,7 +1480,7 @@ fn main() {
         thread::spawn(move || {
             let title = "Updating Mirrorlists".to_string();
             run_in_terminal(&tx, &title, "pkexec", &["bash", "-c",
-                "rate-mirrors --allow-root --protocol https arch | tee /etc/pacman.d/mirrorlist && rate-mirrors --allow-root --protocol https chaotic-aur | tee /etc/pacman.d/chaotic-mirrorlist"
+                            "rate-mirrors --allow-root --protocol https arch | tee /etc/pacman.d/mirrorlist && rate-mirrors --allow-root --protocol https chaotic-aur | tee /etc/pacman.d/chaotic-mirrorlist"
             ], &input, &pid);
         });
     });
@@ -1460,7 +1497,7 @@ fn main() {
         thread::spawn(move || {
             let title = "Fixing GnuPG Keyring".to_string();
             run_in_terminal(&tx, &title, "pkexec", &["bash", "-c",
-                "rm -rf /etc/pacman.d/gnupg/* && pacman-key --init && pacman-key --populate && echo 'keyserver hkp://keyserver.ubuntu.com:80' | tee -a /etc/pacman.d/gnupg/gpg.conf && pacman -Syy --noconfirm archlinux-keyring"
+                            "rm -rf /etc/pacman.d/gnupg/* && pacman-key --init && pacman-key --populate && echo 'keyserver hkp://keyserver.ubuntu.com:80' | tee -a /etc/pacman.d/gnupg/gpg.conf && pacman -Syy --noconfirm archlinux-keyring"
             ], &input, &pid);
         });
     });
@@ -1484,7 +1521,7 @@ fn main() {
 }
 
 /// Load packages from backends (runs in background thread)
-async fn load_packages_async(tx: &mpsc::Sender<UiMessage>) {
+async fn load_packages_async(tx: &mpsc::Sender<UiMessage>, check_updates: bool) {
     // Initialize backends
     let alpm = match AlpmBackend::new() {
         Ok(b) => b,
@@ -1507,43 +1544,49 @@ async fn load_packages_async(tx: &mpsc::Sender<UiMessage>) {
     let cache_fut = alpm.get_cache_size();
     let orphans_fut = alpm.list_orphans();
     let flatpak_avail_fut = flatpak.list_available();
-    let flatpak_updates_fut = flatpak.list_updates();
-
-    // Spawn blocking tasks for sync operations in parallel
-    let checkupdates_fut = tokio::task::spawn_blocking(|| {
-        std::process::Command::new("checkupdates")
-            .output()
-            .or_else(|_| std::process::Command::new("pacman").args(["-Qu"]).output())
-    });
-    let plasmoid_fut = tokio::task::spawn_blocking(list_plasmoids_with_updates);
-    let firmware_fut = tokio::task::spawn_blocking(list_firmware);
     let desktop_map_fut = tokio::task::spawn_blocking(build_desktop_name_map);
     let flatpak_map_fut = tokio::task::spawn_blocking(build_flatpak_name_map);
 
-    // Await everything concurrently
+    // Only check for updates when explicitly requested
+    let flatpak_updates_fut = if check_updates { Some(flatpak.list_updates()) } else { None };
+    let checkupdates_fut = if check_updates {
+        Some(tokio::task::spawn_blocking(|| {
+            std::process::Command::new("checkupdates")
+            .output()
+            .or_else(|_| std::process::Command::new("pacman").args(["-Qu"]).output())
+        }))
+    } else { None };
+    let plasmoid_fut = if check_updates { Some(tokio::task::spawn_blocking(list_plasmoids_with_updates)) } else { None };
+    let firmware_fut = if check_updates { Some(tokio::task::spawn_blocking(list_firmware)) } else { None };
+
+    // Await base data
     let (
         installed_res,
-        cache_res,
-        orphans_res,
-        flatpak_avail_res,
-        flatpak_updates_res,
-        checkupdates_res,
-        plasmoid_res,
-        firmware_res,
-        desktop_map_res,
-        flatpak_map_res,
+         cache_res,
+         orphans_res,
+         flatpak_avail_res,
+         desktop_map_res,
+         flatpak_map_res,
     ) = tokio::join!(
         installed_fut,
         cache_fut,
         orphans_fut,
         flatpak_avail_fut,
-        flatpak_updates_fut,
-        checkupdates_fut,
-        plasmoid_fut,
-        firmware_fut,
         desktop_map_fut,
         flatpak_map_fut,
     );
+
+    // Await update data only if requested
+    let flatpak_updates = if let Some(fut) = flatpak_updates_fut {
+        fut.await.unwrap_or_else(|e| { error!("Failed to list flatpak updates: {}", e); Vec::new() })
+    } else { Vec::new() };
+    let checkupdates_res = if let Some(fut) = checkupdates_fut { Some(fut.await) } else { None };
+    let (_installed_plasmoids, plasmoid_updates) = if let Some(fut) = plasmoid_fut {
+        fut.await.unwrap_or_else(|_| (Vec::new(), Vec::new()))
+    } else { (Vec::new(), Vec::new()) };
+    let firmware_packages: Vec<PackageData> = if let Some(fut) = firmware_fut {
+        fut.await.unwrap_or_else(|_| Vec::new())
+    } else { Vec::new() };
 
     // Process results
     let installed_pacman = installed_res.unwrap_or_else(|e| { error!("Failed to list installed: {}", e); Vec::new() });
@@ -1551,17 +1594,13 @@ async fn load_packages_async(tx: &mpsc::Sender<UiMessage>) {
     let orphan_count = orphans_res.map(|o| o.len()).unwrap_or(0);
 
     let flatpak_packages = flatpak_avail_res.unwrap_or_else(|e| { error!("Failed to list flatpak: {}", e); Vec::new() });
-    let flatpak_updates = flatpak_updates_res.unwrap_or_else(|e| { error!("Failed to list flatpak updates: {}", e); Vec::new() });
-
-    let (_installed_plasmoids, plasmoid_updates) = plasmoid_res.unwrap_or_else(|_| (Vec::new(), Vec::new()));
-    let firmware_packages = firmware_res.unwrap_or_else(|_| Vec::new());
 
     let desktop_map = desktop_map_res.unwrap_or_default();
     let flatpak_name_map = flatpak_map_res.unwrap_or_default();
 
     // Parse checkupdates output
     let mut updates: Vec<xpm_core::package::UpdateInfo> = Vec::new();
-    if let Ok(Ok(result)) = checkupdates_res {
+    if let Some(Ok(Ok(result))) = checkupdates_res {
         if result.status.success() {
             let stdout = String::from_utf8_lossy(&result.stdout);
             for line in stdout.lines() {
@@ -1569,20 +1608,20 @@ async fn load_packages_async(tx: &mpsc::Sender<UiMessage>) {
                 if parts.len() >= 4 {
                     updates.push(xpm_core::package::UpdateInfo {
                         name: parts[0].to_string(),
-                        current_version: xpm_core::package::Version::new(parts[1]),
-                        new_version: xpm_core::package::Version::new(parts[3]),
-                        backend: xpm_core::package::PackageBackend::Pacman,
-                        repository: String::new(),
-                        download_size: 0,
+                                 current_version: xpm_core::package::Version::new(parts[1]),
+                                 new_version: xpm_core::package::Version::new(parts[3]),
+                                 backend: xpm_core::package::PackageBackend::Pacman,
+                                 repository: String::new(),
+                                 download_size: 0,
                     });
                 } else if parts.len() >= 2 {
                     updates.push(xpm_core::package::UpdateInfo {
                         name: parts[0].to_string(),
-                        current_version: xpm_core::package::Version::new(""),
-                        new_version: xpm_core::package::Version::new(parts[1]),
-                        backend: xpm_core::package::PackageBackend::Pacman,
-                        repository: String::new(),
-                        download_size: 0,
+                                 current_version: xpm_core::package::Version::new(""),
+                                 new_version: xpm_core::package::Version::new(parts[1]),
+                                 backend: xpm_core::package::PackageBackend::Pacman,
+                                 repository: String::new(),
+                                 download_size: 0,
                     });
                 }
             }
@@ -1590,59 +1629,59 @@ async fn load_packages_async(tx: &mpsc::Sender<UiMessage>) {
     }
 
     let update_names: std::collections::HashSet<String> =
-        updates.iter().map(|u| u.name.clone()).collect();
+    updates.iter().map(|u| u.name.clone()).collect();
     let flatpak_update_names: std::collections::HashSet<String> =
-        flatpak_updates.iter().map(|u| u.name.clone()).collect();
+    flatpak_updates.iter().map(|u| u.name.clone()).collect();
 
     // Convert to UI types
     let installed_ui: Vec<PackageData> = installed_pacman
-        .iter()
-        .map(|p| package_to_ui(p, update_names.contains(&p.name), &desktop_map))
-        .collect();
+    .iter()
+    .map(|p| package_to_ui(p, update_names.contains(&p.name), &desktop_map))
+    .collect();
 
     let updates_ui: Vec<PackageData> = updates.iter().map(|u| update_to_ui(u)).collect();
 
     let flatpak_ui: Vec<PackageData> = flatpak_packages
-        .iter()
-        .map(|p| {
-            let has_update = flatpak_update_names.contains(&p.name);
-            // Try case-insensitive lookup
-            let (display_name, summary) = flatpak_name_map
-                .get(&p.name.to_lowercase())
-                .cloned()
-                .unwrap_or_else(|| {
-                    // Fallback: extract readable name from app ID
-                    let fallback_name = p.name
-                        .split('.')
-                        .last()
-                        .unwrap_or(&p.name)
-                        .replace('_', " ")
-                        .replace('-', " ");
-                    (fallback_name, String::new())
-                });
+    .iter()
+    .map(|p| {
+        let has_update = flatpak_update_names.contains(&p.name);
+        // Try case-insensitive lookup
+        let (display_name, summary) = flatpak_name_map
+        .get(&p.name.to_lowercase())
+        .cloned()
+        .unwrap_or_else(|| {
+            // Fallback: extract readable name from app ID
+            let fallback_name = p.name
+            .split('.')
+            .last()
+            .unwrap_or(&p.name)
+            .replace('_', " ")
+            .replace('-', " ");
+            (fallback_name, String::new())
+        });
 
-            PackageData {
-                name: SharedString::from(p.name.as_str()),
-                display_name: SharedString::from(&display_name),
-                version: SharedString::from(p.version.to_string().as_str()),
-                description: SharedString::from(&summary),
-                repository: SharedString::from(p.repository.as_str()),
-                backend: 1, // Flatpak
-                installed: matches!(
-                    p.status,
-                    xpm_core::package::PackageStatus::Installed | xpm_core::package::PackageStatus::Orphan
-                ),
-                has_update,
-                installed_size: SharedString::from(""),
-                licenses: SharedString::from(""),
-                url: SharedString::from(""),
-                dependencies: SharedString::from(""),
-                required_by: SharedString::from(""),
-                icon_name: SharedString::from(""),
-                selected: false,
-            }
-        })
-        .collect();
+        PackageData {
+            name: SharedString::from(p.name.as_str()),
+         display_name: SharedString::from(&display_name),
+         version: SharedString::from(p.version.to_string().as_str()),
+         description: SharedString::from(&summary),
+         repository: SharedString::from(p.repository.as_str()),
+         backend: 1, // Flatpak
+         installed: matches!(
+             p.status,
+             xpm_core::package::PackageStatus::Installed | xpm_core::package::PackageStatus::Orphan
+         ),
+         has_update,
+         installed_size: SharedString::from(""),
+         licenses: SharedString::from(""),
+         url: SharedString::from(""),
+         dependencies: SharedString::from(""),
+         required_by: SharedString::from(""),
+         icon_name: SharedString::from(""),
+         selected: false,
+        }
+    })
+    .collect();
 
     // Combine all updates (pacman + flatpak + plasmoid + firmware with updates)
     let firmware_update_count = firmware_packages.iter().filter(|f| f.has_update).count();
@@ -1765,37 +1804,37 @@ fn fetch_store_versions() -> Vec<(String, String)> {
     if let Ok(output) = std::process::Command::new("curl")
         .args(["-s", "--max-time", "15", url])
         .output()
-    {
-        if output.status.success() {
-            let response = String::from_utf8_lossy(&output.stdout);
-            if let Ok(json) = serde_json::from_str::<Value>(&response) {
-                if let Some(data) = json.get("ocs").and_then(|o| o.get("data")).and_then(|d| d.as_array()) {
-                    for item in data {
-                        let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let version = item.get("version").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        if !name.is_empty() && !version.is_empty() {
-                            versions.push((name, version));
+        {
+            if output.status.success() {
+                let response = String::from_utf8_lossy(&output.stdout);
+                if let Ok(json) = serde_json::from_str::<Value>(&response) {
+                    if let Some(data) = json.get("ocs").and_then(|o| o.get("data")).and_then(|d| d.as_array()) {
+                        for item in data {
+                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let version = item.get("version").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            if !name.is_empty() && !version.is_empty() {
+                                versions.push((name, version));
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    versions
+        versions
 }
 
 /// Compare versions to see if store version is newer
 fn version_is_newer(store_version: &str, current_version: &str) -> bool {
     // Simple version comparison
     let store_parts: Vec<u32> = store_version
-        .split(|c: char| !c.is_ascii_digit())
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    .split(|c: char| !c.is_ascii_digit())
+    .filter_map(|s| s.parse().ok())
+    .collect();
     let current_parts: Vec<u32> = current_version
-        .split(|c: char| !c.is_ascii_digit())
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    .split(|c: char| !c.is_ascii_digit())
+    .filter_map(|s| s.parse().ok())
+    .collect();
 
     for i in 0..store_parts.len().max(current_parts.len()) {
         let store_part = store_parts.get(i).copied().unwrap_or(0);
@@ -1817,93 +1856,93 @@ fn list_firmware() -> Vec<PackageData> {
     if let Ok(output) = std::process::Command::new("fwupdmgr")
         .args(["get-devices", "--json"])
         .output()
-    {
-        if output.status.success() {
-            let json_str = String::from_utf8_lossy(&output.stdout);
-            if let Ok(json) = serde_json::from_str::<Value>(&json_str) {
-                if let Some(devices) = json.get("Devices").and_then(|d| d.as_array()) {
-                    for device in devices {
-                        let name = device.get("Name")
+        {
+            if output.status.success() {
+                let json_str = String::from_utf8_lossy(&output.stdout);
+                if let Ok(json) = serde_json::from_str::<Value>(&json_str) {
+                    if let Some(devices) = json.get("Devices").and_then(|d| d.as_array()) {
+                        for device in devices {
+                            let name = device.get("Name")
                             .and_then(|v| v.as_str())
                             .unwrap_or("Unknown Device")
                             .to_string();
-                        let version = device.get("Version")
+                            let version = device.get("Version")
                             .and_then(|v| v.as_str())
                             .unwrap_or("unknown")
                             .to_string();
-                        let vendor = device.get("Vendor")
+                            let vendor = device.get("Vendor")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        let device_id = device.get("DeviceId")
+                            let device_id = device.get("DeviceId")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        let updatable = device.get("Flags")
+                            let updatable = device.get("Flags")
                             .and_then(|f| f.as_array())
                             .map(|flags| flags.iter().any(|f| f.as_str() == Some("updatable")))
                             .unwrap_or(false);
 
-                        // Only show updatable devices
-                        if !updatable {
-                            continue;
+                            // Only show updatable devices
+                            if !updatable {
+                                continue;
+                            }
+
+                            let description = if vendor.is_empty() {
+                                "Firmware device".to_string()
+                            } else {
+                                format!("Firmware by {}", vendor)
+                            };
+
+                            firmware.push(PackageData {
+                                name: SharedString::from(&device_id),
+                                          display_name: SharedString::from(&name),
+                                          version: SharedString::from(&version),
+                                          description: SharedString::from(&description),
+                                          repository: SharedString::from("fwupd"),
+                                          backend: 4, // 4 = firmware
+                                          installed: true,
+                                          has_update: false, // Will check separately
+                                          installed_size: SharedString::from(""),
+                                          licenses: SharedString::from(""),
+                                          url: SharedString::from(""),
+                                          dependencies: SharedString::from(""),
+                                          required_by: SharedString::from(""),
+                                          icon_name: SharedString::from(""),
+                                          selected: false,
+                            });
                         }
-
-                        let description = if vendor.is_empty() {
-                            "Firmware device".to_string()
-                        } else {
-                            format!("Firmware by {}", vendor)
-                        };
-
-                        firmware.push(PackageData {
-                            name: SharedString::from(&device_id),
-                            display_name: SharedString::from(&name),
-                            version: SharedString::from(&version),
-                            description: SharedString::from(&description),
-                            repository: SharedString::from("fwupd"),
-                            backend: 4, // 4 = firmware
-                            installed: true,
-                            has_update: false, // Will check separately
-                            installed_size: SharedString::from(""),
-                            licenses: SharedString::from(""),
-                            url: SharedString::from(""),
-                            dependencies: SharedString::from(""),
-                            required_by: SharedString::from(""),
-                            icon_name: SharedString::from(""),
-                            selected: false,
-                        });
                     }
                 }
             }
         }
-    }
 
-    // Check for firmware updates
-    if let Ok(output) = std::process::Command::new("fwupdmgr")
-        .args(["get-updates", "--json"])
-        .output()
-    {
-        if output.status.success() {
-            let json_str = String::from_utf8_lossy(&output.stdout);
-            if let Ok(json) = serde_json::from_str::<Value>(&json_str) {
-                if let Some(devices) = json.get("Devices").and_then(|d| d.as_array()) {
-                    for device in devices {
-                        let device_id = device.get("DeviceId")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        // Mark devices with updates
-                        for fw in &mut firmware {
-                            if fw.name.as_str() == device_id {
-                                fw.has_update = true;
+        // Check for firmware updates
+        if let Ok(output) = std::process::Command::new("fwupdmgr")
+            .args(["get-updates", "--json"])
+            .output()
+            {
+                if output.status.success() {
+                    let json_str = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(json) = serde_json::from_str::<Value>(&json_str) {
+                        if let Some(devices) = json.get("Devices").and_then(|d| d.as_array()) {
+                            for device in devices {
+                                let device_id = device.get("DeviceId")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                                // Mark devices with updates
+                                for fw in &mut firmware {
+                                    if fw.name.as_str() == device_id {
+                                        fw.has_update = true;
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-    }
 
-    firmware
+            firmware
 }
 
 /// Plasmoid info struct
@@ -1921,21 +1960,21 @@ fn parse_plasmoid_json(path: &std::path::Path) -> PlasmoidInfo {
             // KDE Plasma 6 format has fields under "KPlugin" object
             if let Some(kplugin) = json.get("KPlugin") {
                 let id = kplugin.get("Id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
                 let name = kplugin.get("Name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
                 let version = kplugin.get("Version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
                 let desc = kplugin.get("Description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
                 return PlasmoidInfo { id, name, version, description: desc };
             }
         }
@@ -2022,45 +2061,45 @@ async fn search_packages_async(tx: &mpsc::Sender<UiMessage>, query: &str) {
 
     // Convert to UI types
     let mut results: Vec<PackageData> = pacman_results
-        .iter()
-        .map(|r| {
-            let display_name = humanize_package_name(&r.name, &desktop_map);
-            PackageData {
-                name: SharedString::from(r.name.as_str()),
-                display_name: SharedString::from(&display_name),
-                version: SharedString::from(r.version.to_string().as_str()),
-                description: SharedString::from(r.description.as_str()),
-                repository: SharedString::from(r.repository.as_str()),
-                backend: 0,
-                installed: r.installed,
-                has_update: false,
-                installed_size: SharedString::from(""),
-                licenses: SharedString::from(""),
-                url: SharedString::from(""),
-                dependencies: SharedString::from(""),
-                required_by: SharedString::from(""),
-                icon_name: SharedString::from(""),
-                selected: false,
-            }
-        })
-        .collect();
+    .iter()
+    .map(|r| {
+        let display_name = humanize_package_name(&r.name, &desktop_map);
+        PackageData {
+            name: SharedString::from(r.name.as_str()),
+         display_name: SharedString::from(&display_name),
+         version: SharedString::from(r.version.to_string().as_str()),
+         description: SharedString::from(r.description.as_str()),
+         repository: SharedString::from(r.repository.as_str()),
+         backend: 0,
+         installed: r.installed,
+         has_update: false,
+         installed_size: SharedString::from(""),
+         licenses: SharedString::from(""),
+         url: SharedString::from(""),
+         dependencies: SharedString::from(""),
+         required_by: SharedString::from(""),
+         icon_name: SharedString::from(""),
+         selected: false,
+        }
+    })
+    .collect();
 
     results.extend(flatpak_results.iter().map(|r| PackageData {
         name: SharedString::from(r.name.as_str()),
-        display_name: SharedString::from(r.name.as_str()),
-        version: SharedString::from(r.version.to_string().as_str()),
-        description: SharedString::from(r.description.as_str()),
-        repository: SharedString::from(r.repository.as_str()),
-        backend: 1,
-        installed: r.installed,
-        has_update: false,
-        installed_size: SharedString::from(""),
-        licenses: SharedString::from(""),
-        url: SharedString::from(""),
-        dependencies: SharedString::from(""),
-        required_by: SharedString::from(""),
-        icon_name: SharedString::from(""),
-        selected: false,
+                                              display_name: SharedString::from(r.name.as_str()),
+                                              version: SharedString::from(r.version.to_string().as_str()),
+                                              description: SharedString::from(r.description.as_str()),
+                                              repository: SharedString::from(r.repository.as_str()),
+                                              backend: 1,
+                                              installed: r.installed,
+                                              has_update: false,
+                                              installed_size: SharedString::from(""),
+                                              licenses: SharedString::from(""),
+                                              url: SharedString::from(""),
+                                              dependencies: SharedString::from(""),
+                                              required_by: SharedString::from(""),
+                                              icon_name: SharedString::from(""),
+                                              selected: false,
     }));
 
     // Limit results
@@ -2169,20 +2208,20 @@ fn parse_desktop_file(path: &std::path::Path, target_category: &str) -> Option<P
 
     Some(PackageData {
         name: SharedString::from(&pkg_name),
-        display_name: SharedString::from(&name),
-        version: SharedString::from(""),
-        description: SharedString::from(&description),
-        repository: SharedString::from(repo),
-        backend,
-        installed: true,
-        has_update: false,
-        installed_size: SharedString::from(""),
-        licenses: SharedString::from(""),
-        url: SharedString::from(""),
-        dependencies: SharedString::from(""),
-        required_by: SharedString::from(""),
-        icon_name: SharedString::from(""),
-        selected: false,
+         display_name: SharedString::from(&name),
+         version: SharedString::from(""),
+         description: SharedString::from(&description),
+         repository: SharedString::from(repo),
+         backend,
+         installed: true,
+         has_update: false,
+         installed_size: SharedString::from(""),
+         licenses: SharedString::from(""),
+         url: SharedString::from(""),
+         dependencies: SharedString::from(""),
+         required_by: SharedString::from(""),
+         icon_name: SharedString::from(""),
+         selected: false,
     })
 }
 
@@ -2204,7 +2243,7 @@ fn build_flatpak_name_map() -> HashMap<String, (String, String)> {
     let home = std::env::var("HOME").unwrap_or_default();
     let search_dirs = [
         format!("{}/.local/share/flatpak/appstream", home),
-        "/var/lib/flatpak/appstream".to_string(),
+            "/var/lib/flatpak/appstream".to_string(),
     ];
 
     for base_dir in &search_dirs {
@@ -2331,44 +2370,44 @@ fn parse_appstream_xml<R: std::io::Read>(reader: R, target_category: &str, packa
             if in_component && current_categories.iter().any(|c| c == target_category) {
                 packages.push(PackageData {
                     name: SharedString::from(&current_id),
-                    display_name: SharedString::from(&current_name),
-                    version: SharedString::from(""),
-                    description: SharedString::from(&current_summary),
-                    repository: SharedString::from("flathub"),
-                    backend: 1,
-                    installed: false, // Will check later
-                    has_update: false,
-                    installed_size: SharedString::from(""),
-                    licenses: SharedString::from(""),
-                    url: SharedString::from(""),
-                    dependencies: SharedString::from(""),
-                    required_by: SharedString::from(""),
-                    icon_name: SharedString::from(""),
-                    selected: false,
+                              display_name: SharedString::from(&current_name),
+                              version: SharedString::from(""),
+                              description: SharedString::from(&current_summary),
+                              repository: SharedString::from("flathub"),
+                              backend: 1,
+                              installed: false, // Will check later
+                              has_update: false,
+                              installed_size: SharedString::from(""),
+                              licenses: SharedString::from(""),
+                              url: SharedString::from(""),
+                              dependencies: SharedString::from(""),
+                              required_by: SharedString::from(""),
+                              icon_name: SharedString::from(""),
+                              selected: false,
                 });
             }
             in_component = false;
         } else if in_component {
             if line.starts_with("<id>") && line.ends_with("</id>") {
                 current_id = line.strip_prefix("<id>").unwrap_or("")
-                    .strip_suffix("</id>").unwrap_or("").to_string();
+                .strip_suffix("</id>").unwrap_or("").to_string();
             } else if line.starts_with("<name>") && line.ends_with("</name>") && current_name.is_empty() {
                 current_name = line.strip_prefix("<name>").unwrap_or("")
-                    .strip_suffix("</name>").unwrap_or("").to_string();
+                .strip_suffix("</name>").unwrap_or("").to_string();
             } else if line.starts_with("<name") && line.contains("xml:lang") {
                 skip_lang = true;
             } else if line == "</name>" && skip_lang {
                 skip_lang = false;
             } else if line.starts_with("<summary>") && line.ends_with("</summary>") && current_summary.is_empty() {
                 current_summary = line.strip_prefix("<summary>").unwrap_or("")
-                    .strip_suffix("</summary>").unwrap_or("").to_string();
+                .strip_suffix("</summary>").unwrap_or("").to_string();
             } else if line == "<categories>" {
                 in_categories = true;
             } else if line == "</categories>" {
                 in_categories = false;
             } else if in_categories && line.starts_with("<category>") && line.ends_with("</category>") {
                 let cat = line.strip_prefix("<category>").unwrap_or("")
-                    .strip_suffix("</category>").unwrap_or("").to_string();
+                .strip_suffix("</category>").unwrap_or("").to_string();
                 current_categories.push(cat);
             }
         }
@@ -2396,8 +2435,8 @@ fn build_desktop_name_map() -> HashMap<String, String> {
                             } else if line.starts_with("Exec=") {
                                 // Extract binary name from Exec line
                                 exec = line.strip_prefix("Exec=").unwrap_or("")
-                                    .split_whitespace().next().unwrap_or("")
-                                    .rsplit('/').next().unwrap_or("").to_string();
+                                .split_whitespace().next().unwrap_or("")
+                                .rsplit('/').next().unwrap_or("").to_string();
                             } else if line.starts_with("NoDisplay=true") {
                                 no_display = true;
                             }
@@ -2422,31 +2461,31 @@ fn build_desktop_name_map() -> HashMap<String, String> {
     if let Ok(output) = std::process::Command::new("pacman")
         .args(["-Ql"])
         .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("/usr/share/applications/") && line.ends_with(".desktop") {
-                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
-                    if parts.len() == 2 {
-                        let pkg_name = parts[0];
-                        let desktop_path = parts[1].trim();
-                        let file_stem = std::path::Path::new(desktop_path)
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if line.contains("/usr/share/applications/") && line.ends_with(".desktop") {
+                        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                        if parts.len() == 2 {
+                            let pkg_name = parts[0];
+                            let desktop_path = parts[1].trim();
+                            let file_stem = std::path::Path::new(desktop_path)
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or("")
                             .to_lowercase();
-                        // If we have a human name for this desktop file, map the package name to it
-                        if let Some(human_name) = map.get(&file_stem) {
-                            map.insert(pkg_name.to_lowercase(), human_name.clone());
+                            // If we have a human name for this desktop file, map the package name to it
+                            if let Some(human_name) = map.get(&file_stem) {
+                                map.insert(pkg_name.to_lowercase(), human_name.clone());
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    map
+        map
 }
 
 /// Humanize a package name - lookup desktop file names, fallback to title-case
@@ -2458,15 +2497,15 @@ fn humanize_package_name(name: &str, desktop_map: &HashMap<String, String>) -> S
 
     // Title-case: replace hyphens/underscores with spaces, capitalize each word
     name.split(|c: char| c == '-' || c == '_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    .map(|word| {
+        let mut chars = word.chars();
+        match chars.next() {
+            Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
+         None => String::new(),
+        }
+    })
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 /// Parse active repos from /etc/pacman.conf
@@ -2490,55 +2529,55 @@ fn parse_pacman_repos() -> Vec<String> {
 fn load_repo_packages(tx: &std::sync::mpsc::Sender<UiMessage>, repo: &str) {
     // Get installed package names
     let installed_names: std::collections::HashSet<String> = std::process::Command::new("pacman")
-        .args(["-Qq"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(|l| l.to_string()).collect())
-        .unwrap_or_default();
+    .args(["-Qq"])
+    .output()
+    .ok()
+    .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(|l| l.to_string()).collect())
+    .unwrap_or_default();
 
     // Build desktop name map for humanization
     let desktop_map = build_desktop_name_map();
 
     // Use expac -S with %r to get repo, then filter. Format: repo\tname\tversion\tdesc
     let output = std::process::Command::new("expac")
-        .args(["-S", "%r\t%n\t%v\t%d"])
-        .output();
+    .args(["-S", "%r\t%n\t%v\t%d"])
+    .output();
 
     let packages: Vec<PackageData> = match output {
         Ok(result) if result.status.success() => {
             let stdout = String::from_utf8_lossy(&result.stdout);
             stdout
-                .lines()
-                .filter_map(|line| {
-                    let parts: Vec<&str> = line.splitn(4, '\t').collect();
-                    if parts.len() >= 4 && parts[0] == repo {
-                        let name = parts[1];
-                        let version = parts[2];
-                        let description = parts[3];
-                        let is_installed = installed_names.contains(name);
-                        let display_name = humanize_package_name(name, &desktop_map);
-                        Some(PackageData {
-                            name: SharedString::from(name),
-                            display_name: SharedString::from(&display_name),
-                            version: SharedString::from(version),
-                            description: SharedString::from(description),
-                            repository: SharedString::from(repo),
-                            backend: 0,
-                            installed: is_installed,
-                            has_update: false,
-                            installed_size: SharedString::from(""),
-                            licenses: SharedString::from(""),
-                            url: SharedString::from(""),
-                            dependencies: SharedString::from(""),
-                            required_by: SharedString::from(""),
-                            icon_name: SharedString::from(""),
-                            selected: false,
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect()
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.splitn(4, '\t').collect();
+                if parts.len() >= 4 && parts[0] == repo {
+                    let name = parts[1];
+                    let version = parts[2];
+                    let description = parts[3];
+                    let is_installed = installed_names.contains(name);
+                    let display_name = humanize_package_name(name, &desktop_map);
+                    Some(PackageData {
+                        name: SharedString::from(name),
+                         display_name: SharedString::from(&display_name),
+                         version: SharedString::from(version),
+                         description: SharedString::from(description),
+                         repository: SharedString::from(repo),
+                         backend: 0,
+                         installed: is_installed,
+                         has_update: false,
+                         installed_size: SharedString::from(""),
+                         licenses: SharedString::from(""),
+                         url: SharedString::from(""),
+                         dependencies: SharedString::from(""),
+                         required_by: SharedString::from(""),
+                         icon_name: SharedString::from(""),
+                         selected: false,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
         }
         _ => Vec::new(),
     };
