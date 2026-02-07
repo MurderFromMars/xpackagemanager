@@ -1,11 +1,11 @@
 #!/bin/bash
-
 set -e
 
-# Colors
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
@@ -14,108 +14,90 @@ NC='\033[0m'
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 
-clear
 echo -e "${CYAN}${BOLD}"
-echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║         xPackageManager - Universal Arch Edition              ║"
-echo "║         Works on ALL Arch-based distributions!                ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║          xPackageManager — CyberXero Edition               ║"
+echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo ""
 
-# Check for root
 if [ "$EUID" -eq 0 ]; then
     print_error "Do not run as root. The script will request sudo when needed."
     exit 1
 fi
 
-# Check for Arch-based system
 if [ ! -f /etc/arch-release ] && ! command -v pacman &> /dev/null; then
-    print_error "This package manager is designed for Arch-based systems only!"
+    print_error "This script is for Arch-based systems only."
     exit 1
 fi
 
-# Check dependencies
-print_info "Checking build dependencies..."
-MISSING_DEPS=()
+print_info "Installing dependencies..."
+sudo pacman -S --needed --noconfirm rust qt6-base qt6-declarative pacman flatpak
 
-for dep in rust cargo qt6-base qt6-declarative pacman flatpak; do
-    if ! pacman -Q $dep &>/dev/null; then
-        MISSING_DEPS+=("$dep")
-    fi
-done
-
-if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-    print_info "Installing missing dependencies: ${MISSING_DEPS[*]}"
-    sudo pacman -S --needed --noconfirm "${MISSING_DEPS[@]}"
-fi
-
-print_success "All dependencies installed"
-echo ""
-
-# Build the project
 print_info "Building xPackageManager (this may take a few minutes)..."
-if ! cargo build --release; then
+cargo build --release
+if [ $? -ne 0 ]; then
     print_error "Build failed!"
     exit 1
 fi
 
-print_success "Build completed successfully"
-echo ""
-
-# Install the binary
-print_info "Installing xPackageManager..."
+print_info "Installing to /opt/xpackagemanager/..."
 sudo mkdir -p /opt/xpackagemanager
-sudo cp target/release/xpm-ui /opt/xpackagemanager/xpackagemanager
-sudo chmod +x /opt/xpackagemanager/xpackagemanager
+sudo install -Dm755 target/release/xpm-ui /opt/xpackagemanager/xpackagemanager
+sudo ln -sf /opt/xpackagemanager/xpackagemanager /usr/bin/xpackagemanager
 
-# Create wrapper script
-print_info "Creating launcher..."
-sudo tee /usr/bin/xpackagemanager > /dev/null << 'EOF'
-#!/bin/bash
-exec /opt/xpackagemanager/xpackagemanager "$@"
+print_info "Installing desktop entry..."
+sudo tee /usr/share/applications/xpackagemanager.desktop > /dev/null << 'EOF'
+[Desktop Entry]
+Name=xPackage Manager
+Comment=Modern package manager for Arch Linux
+Exec=xpackagemanager
+Icon=system-software-install
+Terminal=false
+Type=Application
+Categories=System;PackageManager;
+Keywords=package;manager;pacman;flatpak;
 EOF
-sudo chmod +x /usr/bin/xpackagemanager
 
-# Install desktop files
-print_info "Installing desktop integration..."
+print_info "Installing MIME type..."
+sudo tee /usr/share/mime/packages/x-alpm-package.xml > /dev/null << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-alpm-package">
+    <comment>Arch Linux Package</comment>
+    <glob pattern="*.pkg.tar.zst"/>
+    <glob pattern="*.pkg.tar.xz"/>
+    <glob pattern="*.pkg.tar.gz"/>
+  </mime-type>
+</mime-info>
+EOF
 
-if [ -d packaging ]; then
-    # Install desktop file
-    if [ -f packaging/xpackagemanager.desktop ]; then
-        sudo install -Dm644 packaging/xpackagemanager.desktop \
-            /usr/share/applications/xpackagemanager.desktop
-    fi
-    
-    # Install MIME type
-    if [ -f packaging/x-alpm-package.xml ]; then
-        sudo install -Dm644 packaging/x-alpm-package.xml \
-            /usr/share/mime/packages/x-alpm-package.xml
-    fi
-    
-    # Install polkit policy
-    if [ -f packaging/org.xpackagemanager.policy ]; then
-        sudo install -Dm644 packaging/org.xpackagemanager.policy \
-            /usr/share/polkit-1/actions/org.xpackagemanager.policy
-    fi
-fi
+print_info "Installing polkit policy..."
+sudo tee /usr/share/polkit-1/actions/org.xpackagemanager.policy > /dev/null << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <action id="org.xpackagemanager.pkexec">
+    <description>Run xPackageManager privileged operations</description>
+    <message>Authentication is required to manage packages</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/xpackagemanager/xpackagemanager</annotate>
+  </action>
+</policyconfig>
+EOF
 
-# Update databases
 print_info "Updating system databases..."
 sudo update-desktop-database /usr/share/applications 2>/dev/null || true
 sudo update-mime-database /usr/share/mime 2>/dev/null || true
 
 echo ""
-echo -e "${GREEN}${BOLD}════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}${BOLD}  Installation Complete!${NC}"
-echo -e "${GREEN}${BOLD}════════════════════════════════════════════════════════${NC}"
+print_success "xPackageManager installed!"
 echo ""
-echo -e "${CYAN}Launch xPackageManager:${NC}"
-echo "  • From terminal: ${BOLD}xpackagemanager${NC}"
-echo "  • From app menu: Search for 'xPackage Manager'"
-echo ""
-print_info "This version works on ALL Arch-based distributions!"
-print_info "No distro restrictions or LD_PRELOAD hacks required."
+echo -e "${BOLD}Launch:${NC} xpackagemanager or from Application Menu"
 echo ""
